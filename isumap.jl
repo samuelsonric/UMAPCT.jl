@@ -1,6 +1,6 @@
 # This project is inspired by github:LUK4S-B/IsUMAP.
-@info "Add packages"
-using Pkg; Pkg.add(["FileIO", "Graphs", "MeshIO", "Meshes", "MultivariateStats", "NearestNeighbors", "Random", "SparseArrays", "StaticArrays", "StatsBase"])
+#@info "Add packages"
+#using Pkg; Pkg.add(["FileIO", "Graphs", "MeshIO", "Meshes", "MultivariateStats", "NearestNeighbors", "Plots", "Random", "SparseArrays", "StaticArrays", "StatsBase", "UnicodePlots"])
 
 @info "Load packages"
 using FileIO
@@ -9,10 +9,12 @@ using MeshIO
 using Meshes
 using MultivariateStats
 using NearestNeighbors
+using Plots
 using Random; Random.seed!(0);
 using SparseArrays
 using StaticArrays
 using StatsBase
+using UnicodePlots
 
 @enum DataScenario random_scenario torus_scenario
 scenario = torus_scenario
@@ -21,9 +23,9 @@ scenario = torus_scenario
 # Note: A node considers itself a neighbor of distance 0.
 high_dim, input_data, N, k_neighbors = if scenario == random_scenario
   high_dim = 3
-  N = 8
+  N = 100
   input_data = [SVector{high_dim, Float64}(rand(high_dim)) for _ in 1:N]
-  k_neighbors = 3
+  k_neighbors = 8
   high_dim, input_data, N, k_neighbors
 elseif scenario == torus_scenario
   m = load("./torus.obj")
@@ -113,6 +115,29 @@ shortest_dists[isinf.(shortest_dists)] .= 0.0
 mds = fit(MDS, shortest_dists; distances=true, maxoutdim=2)
 embedding = predict(mds)
 
+@info "Visualize Output"
+
+# Create an ASCII plot for REPL use and log files.
+println(scatterplot(embedding[1,:], embedding[2,:]))
+
+scenario_name = if scenario == random_scenario
+  "random"
+elseif scenario == torus_scenario
+  "torus"
+else
+  ""
+end
+
+# Assign colors according to degree around the circle.
+colors = map(input_data) do p
+  atan(p[1], p[3])
+end
+in_data = reduce(hcat, input_data)
+sct = scatter3d(in_data[1,:], in_data[2,:], in_data[3,:], zcolor=colors, color=:hsv, legend=false, camera=(16,13))
+png(sct, "./$(scenario_name)_highdim_k$(k_neighbors).png")
+sct = scatter(embedding[1,:], embedding[2,:], zcolor=colors, color=:hsv, legend=false)
+png(sct, "./$(scenario_name)_embedding_k$(k_neighbors).png")
+
 # This output was derived by using the Bounded Sum t-conorm on 100 randomly
 # sampled points from the torus with k=8 nearest neighbors.
 #=
@@ -137,31 +162,5 @@ julia> scatterplot(embedding[1,:], embedding[2,:])
    -2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
       └────────────────────────────────────────┘ 
       ⠀-2⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀2⠀ 
-=#
-
-# This output was derived by using the Bounded Sum t-conorm on 100 randomly
-# sampled points from the torus with k=3 nearest neighbors.
-#=
-julia> using UnicodePlots
-
-julia> scatterplot(embedding[1,:], embedding[2,:])
-      ┌────────────────────────────────────────┐ 
-    2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
-      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠔⠀⠀⠀⠀⠀⠀│ 
-      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⡰⠁⠀⠀⠀⠀⠀⠀│ 
-      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠠⠆⠀⠀⠀⠀⠀⠀⠀│ 
-      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡠⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
-      │⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⢉⠭⠍⠝⠛⠉⠉⠉⠉⠉⠉⠉⠉⠉⢹⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉│ 
-      │⠀⠀⡀⠀⠀⠀⠀⠀⠒⠒⠃⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⡀⠀⠀⠀⠀⠀│ 
-      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠸⠀⠀⠀⠀⠀│ 
-      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠉⠀⠀⠀⠀│ 
-      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⢃⠀⠀⠀│ 
-      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⢃⠀⠀│ 
-      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
-      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄│ 
-      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠐│ 
-   -4 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
-      └────────────────────────────────────────┘ 
-      ⠀-5⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀2⠀ 
 =#
 
