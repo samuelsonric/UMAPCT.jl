@@ -133,9 +133,11 @@ colors = map(input_data) do p
   atan(p[1], p[3])
 end
 in_data = reduce(hcat, input_data)
-sct = scatter3d(in_data[1,:], in_data[2,:], in_data[3,:], zcolor=colors, color=:hsv, legend=false, camera=(16,13))
+sct = scatter3d(in_data[1,:], in_data[2,:], in_data[3,:], zcolor=colors, color=:hsv, legend=false, camera=(16,13),
+  title="High-dimensional data")
 png(sct, "./$(scenario_name)_highdim_k$(k_neighbors).png")
-sct = scatter(embedding[1,:], embedding[2,:], zcolor=colors, color=:hsv, legend=false)
+sct = scatter(embedding[1,:], embedding[2,:], zcolor=colors, color=:hsv, legend=false,
+  title="Low-dimensional embedding")
 png(sct, "./$(scenario_name)_embedding_k$(k_neighbors).png")
 
 # This output was derived by using the Bounded Sum t-conorm on 100 randomly
