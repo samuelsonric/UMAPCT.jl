@@ -1,15 +1,18 @@
+# This project is inspired by github:LUK4S-B/IsUMAP.
 @info "Add packages"
-using Pkg; Pkg.add(["FileIO", "Graphs", "MeshIO", "Meshes", "NearestNeighbors", "Random", "SparseArrays", "StaticArrays"])
+using Pkg; Pkg.add(["FileIO", "Graphs", "MeshIO", "Meshes", "MultivariateStats", "NearestNeighbors", "Random", "SparseArrays", "StaticArrays", "StatsBase"])
 
 @info "Load packages"
 using FileIO
 using Graphs
 using MeshIO
 using Meshes
+using MultivariateStats
 using NearestNeighbors
 using Random; Random.seed!(0);
 using SparseArrays
 using StaticArrays
+using StatsBase
 
 @enum DataScenario random_scenario torus_scenario
 scenario = torus_scenario
@@ -26,8 +29,10 @@ elseif scenario == torus_scenario
   m = load("./torus.obj")
   high_dim = 3
   input_data = [SVector{high_dim, Float64}(p) for p in m.vertex_attributes.position]
+  # Sample 100 points without replacement.
+  input_data = sample(input_data, 100; replace=false)
   N = length(input_data)
-  k_neighbors = 3
+  k_neighbors = 8
   high_dim, input_data, N, k_neighbors
 else
   @error "Unspecified scenario"
@@ -100,6 +105,63 @@ function shortest_paths(D)
 end
 shortest_dists = shortest_paths(D)
 
-# At this point, we pass off to any dimension reduction algorithm, so conclude.
+# At this point, we finished Isumap, so pass off to any dimension reduction algorithm.
 @info "Finished Isumap"
+
+@info "Execute Multi-Dimensional Scaling (MDS)"
+shortest_dists[isinf.(shortest_dists)] .= 0.0
+mds = fit(MDS, shortest_dists; distances=true, maxoutdim=2)
+embedding = predict(mds)
+
+# This output was derived by using the Bounded Sum t-conorm on 100 randomly
+# sampled points from the torus with k=8 nearest neighbors.
+#=
+julia> using UnicodePlots
+
+julia> scatterplot(embedding[1,:], embedding[2,:])
+      ┌────────────────────────────────────────┐ 
+    1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⢢⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⠀⠀⠀⠂⡗⠠⠵⠙⠢⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⡈⢢⠀⠀⠀⢄⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠁⠀⢀⠀⡀⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠁⠁⠘⠀⢂⡀⡀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠙⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⠄⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⢍⠍⠉⠉⠉⠉⠉⠉⡏⠉⠉⠉⠉⠉⠉⠉⠉⠉⡉⠉⠉⠉⠉⠉⠉⠉⠉⠉│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠒⢈⡀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⡀⣀⠠⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠨⡐⠀⠀⠀⠀⠀⡇⠀⠀⠀⡀⡢⠒⠄⠀⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠆⢄⠀⠀⢀⡇⠐⠀⡀⠈⠂⠀⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⡄⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+   -2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      └────────────────────────────────────────┘ 
+      ⠀-2⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀2⠀ 
+=#
+
+# This output was derived by using the Bounded Sum t-conorm on 100 randomly
+# sampled points from the torus with k=3 nearest neighbors.
+#=
+julia> using UnicodePlots
+
+julia> scatterplot(embedding[1,:], embedding[2,:])
+      ┌────────────────────────────────────────┐ 
+    2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠔⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⡰⠁⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠠⠆⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡠⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⢉⠭⠍⠝⠛⠉⠉⠉⠉⠉⠉⠉⠉⠉⢹⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉│ 
+      │⠀⠀⡀⠀⠀⠀⠀⠀⠒⠒⠃⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⡀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠸⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠉⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⢃⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⢃⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄│ 
+      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠐│ 
+   -4 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
+      └────────────────────────────────────────┘ 
+      ⠀-5⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀2⠀ 
+=#
 
