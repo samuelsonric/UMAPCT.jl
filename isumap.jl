@@ -1,21 +1,37 @@
 @info "Add packages"
-using Pkg; Pkg.add(["CombinatorialSpaces", "NearestNeighbors", "Graphs", "Random", "SparseArrays", "StaticArrays"])
+using Pkg; Pkg.add(["FileIO", "Graphs", "MeshIO", "Meshes", "NearestNeighbors", "Random", "SparseArrays", "StaticArrays"])
 
 @info "Load packages"
-using CombinatorialSpaces
+using FileIO
 using Graphs
+using MeshIO
+using Meshes
 using NearestNeighbors
-using Random
+using Random; Random.seed!(0);
 using SparseArrays
 using StaticArrays
 
+@enum DataScenario random_scenario torus_scenario
+scenario = torus_scenario
+
 @info "Load in datapoints"
-Random.seed!(0);
-N = 8
-high_dim = 3
 # Note: A node considers itself a neighbor of distance 0.
-k_neighbors = 3
-input_data = [SVector{high_dim, Float64}(rand(high_dim)) for _ in 1:N]
+high_dim, input_data, N, k_neighbors = if scenario == random_scenario
+  high_dim = 3
+  N = 8
+  input_data = [SVector{high_dim, Float64}(rand(high_dim)) for _ in 1:N]
+  k_neighbors = 3
+  high_dim, input_data, N, k_neighbors
+elseif scenario == torus_scenario
+  m = load("./torus.obj")
+  high_dim = 3
+  input_data = [SVector{high_dim, Float64}(p) for p in m.vertex_attributes.position]
+  N = length(input_data)
+  k_neighbors = 3
+  high_dim, input_data, N, k_neighbors
+else
+  @error "Unspecified scenario"
+end
 
 @info "Run KNN"
 function run_knn(data)
