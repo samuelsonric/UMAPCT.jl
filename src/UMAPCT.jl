@@ -5,47 +5,55 @@ using FileIO
 using GeometryBasics
 using Graphs
 using MeshIO
+using Distances
 using Meshes
 using MultivariateStats
-using NearestNeighbors
-using Random; Random.seed!(0);
+using NearestNeighborDescent
+using Random
 using SparseArrays
+using SparseArrays: AbstractSparseMatrixCSC
 using StaticArrays
 using StatsBase
+using UMAP
 
 
-export isoumap
+export isoumap, umap
 
 
-function neighbors(data::AbstractVector, k::Integer)
-    knn(KDTree(data), data, k)
-end
+function smoothknndistance(distances::AbstractVector, ρ::Real)
+    k = length(distances)
 
-
-function normalize!(distances)
-    for d in distances
-        d ./= maximum(d)
-    end
-    
-    distances
-end
-
-
-function merge(indices, distances)
-    n = length(distances)
-    matrix = spzeros(n, n)
-    
-    for (i, d) in enumerate(distances)
-        for (j, n) in zip(indices[i], d)
-          matrix[i, j] = n
+    function f(σ)
+        sum(distances) do x
+            exp(-(x - ρ) / σ)
         end
     end
-    
+
+    values = range(0, -(last(distances) - ρ) / (log(log2(k)) - log(k)), 100)
+    i = searchsortedfirst(map(f, values), log2(k))
+    values[i]
+end
+
+
+function metricspaces(data::AbstractMatrix{T}, k::Integer) where T
+    indices, distances = knn_matrices(nndescent(data, k, Euclidean()))
+    m, n = size(distances)
+    matrix = spzeros(T, n, n)
+
+    for i in 1:n
+        ρ = distances[1, i]
+        σ = smoothknndistance(distances[:, i], ρ)
+
+        for j in 1:m
+            matrix[i, indices[j, i]] = (distances[j, i] - ρ) / σ
+        end
+    end
+   
     matrix
 end
 
 
-function fuzzysimplicialset!(matrix)
+function singular!(matrix::AbstractSparseMatrixCSC)
     dropzeros!(matrix)
     
       for (i, j, v) in zip(findnz(matrix)...)
@@ -56,8 +64,8 @@ function fuzzysimplicialset!(matrix)
 end
 
 
-function tconorm!(matrix)
-    matrix .+= matrix'
+function merge(tconorm, matrix::AbstractSparseMatrixCSC)
+    matrix = tconorm.(matrix, matrix')
     
     for (i, j, v) in zip(findnz(matrix)...)
         matrix[i, j] = min(matrix[i, j], 1.0)
@@ -67,7 +75,7 @@ function tconorm!(matrix)
 end
 
 
-function metricspace!(matrix)
+function realize!(matrix::AbstractSparseMatrixCSC)
     dropzeros!(matrix)
     
     for (i, j, v) in zip(findnz(matrix)...)
@@ -78,21 +86,24 @@ function metricspace!(matrix)
 end
 
 
-function shortestpaths(matrix)
+function shortestpaths(matrix::AbstractSparseMatrixCSC)
     state = floyd_warshall_shortest_paths(Graph(matrix), matrix)
     state.dists
 end
 
 
-function isoumap(data::AbstractVector, k::Integer)
-    indices, distances = neighbors(data, k)
-    normalize!(distances)
-    matrix = merge(indices, distances)
-    metricspace!(tconorm!(fuzzysimplicialset!(matrix)))
-    shortestdistances = shortestpaths(matrix)
-    shortestdistances[isinf.(shortestdistances)] .= 0
-    mds = fit(MDS, shortestdistances; distances=true, maxoutdim=2)
-    predict(mds)
+function isoumap(tconorm, data::AbstractMatrix, k::Integer)
+    realize!(merge(tconorm, singular!(metricspaces(data, k))))
+    distances = shortestpaths(matrix)
+    distances[isinf.(distances)] .= 0
+    predict(fit(MDS, distances; distances=true, maxoutdim=2))
+end
+
+
+function umap(tconorm, data::AbstractMatrix, k::Integer)
+    matrix = merge(tconorm, singular!(metricspaces(data, k)))
+    embedding = UMAP.initialize_embedding(matrix, 2, Val(:spectral))
+    reduce(hcat, UMAP.optimize_embedding(matrix, embedding, embedding, 300, 1, 1//10, 1, 1, 5, move_ref=true))
 end
 
 
