@@ -93,7 +93,7 @@ end
 
 
 function isoumap(tconorm, data::AbstractMatrix, k::Integer)
-    realize!(merge(tconorm, singular!(metricspaces(data, k))))
+    matrix = realize!(merge(tconorm, singular!(metricspaces(data, k))))
     distances = shortestpaths(matrix)
     distances[isinf.(distances)] .= 0
     predict(fit(MDS, distances; distances=true, maxoutdim=2))
